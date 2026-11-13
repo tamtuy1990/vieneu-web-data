@@ -8,6 +8,7 @@ The model weights themselves are loaded from Hugging Face; this repository only 
 | `sea_g2p_rs.wasm` | Vietnamese/English text → phoneme converter, compiled for `wasm32-unknown-unknown` (`--no-default-features --features capi`) | [sea-g2p](https://github.com/pnnbao97/sea-g2p) 0.10.0 (commit in `patch/sea-g2p-commit.txt`), Apache-2.0, modified: `patch/sea-g2p-wasm.patch` |
 | `sea_g2p_vi.bin.gz.00`, `.01` | sea-g2p phoneme dictionary with the Thai and Indonesian sections removed (`patch/locTuDien.mjs`), gzip, split in two (jsDelivr serves ≤ 20 MB per file). Concatenate, then gunzip: 50 090 973 bytes | sea-g2p `python/sea_g2p/sea_g2p.bin`, Apache-2.0 |
 | `ngoc-huyen.json` | The "Ngọc Huyền" preset voice: 192-d speaker embedding + 63 MOSS reference frames | [VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS) `voices_v3_turbo.json` (commit in `patch/vieneu-commit.txt`), Apache-2.0 |
+| `voices.json` | All 25 preset voices of VieNeu-TTS v3 Turbo, keyed by tool voice id (`vieneu_ngoc` = Ngọc Huyền, `vieneu_<name>` for the others): name, 192-d speaker embedding, MOSS reference frames (trailing encoder pad frame 455 removed) | [VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS) `voices_v3_turbo.json`, Apache-2.0 |
 
 ## Changes made to sea-g2p (summary of `patch/sea-g2p-wasm.patch`)
 
