@@ -1,0 +1,84 @@
+diff -ru '--exclude=target' src/sea-g2p/Cargo.toml build/sea-g2p-wasm/Cargo.toml
+--- src/sea-g2p/Cargo.toml	2026-11-12 23:21:35.369116000 +0700
++++ build/sea-g2p-wasm/Cargo.toml	2026-11-12 23:48:06.152804800 +0700
+@@ -21,9 +21,11 @@
+ regex = "1.10"
+ fancy-regex = "0.13"
+ once_cell = "1.19"
+-memmap2 = "0.9"
+ rayon = "1.10"
+ unicode-normalization = "0.1"
+ 
++[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
++memmap2 = "0.9"
++
+ [build-dependencies]
+ pyo3-build-config = { version = "0.23", optional = true }
+diff -ru '--exclude=target' src/sea-g2p/src/capi.rs build/sea-g2p-wasm/src/capi.rs
+--- src/sea-g2p/src/capi.rs	2026-11-12 23:21:35.790710200 +0700
++++ build/sea-g2p-wasm/src/capi.rs	2026-11-12 23:48:06.153326900 +0700
+@@ -231,3 +231,32 @@
+ pub extern "C" fn sea_g2p_abi_version() -> i32 {
+     1
+ }
++
++// ── wasm32: cấp/giải phóng bộ nhớ cho JS và giao từ điển dạng byte ─────────────
++#[cfg(target_arch = "wasm32")]
++#[no_mangle]
++pub extern "C" fn sea_g2p_alloc(n: usize) -> *mut u8 {
++    let mut v = Vec::<u8>::with_capacity(n.max(1));
++    let p = v.as_mut_ptr();
++    std::mem::forget(v);
++    p
++}
++
++/// # Safety
++/// `ptr`/`n` must come from one [`sea_g2p_alloc`] call.
++#[cfg(target_arch = "wasm32")]
++#[no_mangle]
++pub unsafe extern "C" fn sea_g2p_free(ptr: *mut u8, n: usize) {
++    if !ptr.is_null() { drop(unsafe { Vec::from_raw_parts(ptr, 0, n.max(1)) }); }
++}
++
++/// Giao toàn bộ `sea_g2p.bin` (đã chép vào vùng nhớ từ [`sea_g2p_alloc`], không bao giờ giải phóng). Trả 1 nếu nhận.
++///
++/// # Safety
++/// `ptr..ptr+n` must hold the dictionary bytes and stay alive for the program's lifetime.
++#[cfg(target_arch = "wasm32")]
++#[no_mangle]
++pub unsafe extern "C" fn sea_g2p_set_dict(ptr: *const u8, n: usize) -> i32 {
++    let bytes: &'static [u8] = unsafe { std::slice::from_raw_parts(ptr, n) };
++    crate::core::dict::WASM_DICT.set(bytes).is_ok() as i32
++}
+diff -ru '--exclude=target' src/sea-g2p/src/core/dict.rs build/sea-g2p-wasm/src/core/dict.rs
+--- src/sea-g2p/src/core/dict.rs	2026-11-12 23:21:35.791913900 +0700
++++ build/sea-g2p-wasm/src/core/dict.rs	2026-11-12 23:48:06.152249600 +0700
+@@ -16,8 +16,15 @@
+ //!
+ //! The mmap is never modified; `scripts/seap.py` is the writer.
+ 
++#[cfg(not(target_arch = "wasm32"))]
+ use memmap2::Mmap;
++#[cfg(not(target_arch = "wasm32"))]
+ use std::fs::File;
++// wasm32: không có mmap/file — JS nạp sea_g2p.bin vào bộ nhớ WASM rồi giao lát byte cố định cho thư viện.
++#[cfg(target_arch = "wasm32")]
++type Mmap = &'static [u8];
++#[cfg(target_arch = "wasm32")]
++pub static WASM_DICT: std::sync::OnceLock<&'static [u8]> = std::sync::OnceLock::new();
+ use std::io;
+ 
+ /// Section kinds for version-2 language tables.
+@@ -47,8 +54,10 @@
+ 
+ impl PhonemeDict {
+     pub fn new(path: &str) -> io::Result<Self> {
+-        let file = File::open(path)?;
+-        let mmap = unsafe { Mmap::map(&file)? };
++        #[cfg(not(target_arch = "wasm32"))]
++        let mmap = { let file = File::open(path)?; unsafe { Mmap::map(&file)? } };
++        #[cfg(target_arch = "wasm32")]
++        let mmap: Mmap = { let _ = path; *WASM_DICT.get().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "dictionary bytes not set"))? };
+ 
+         if mmap.len() < 32 || &mmap[0..4] != b"SEAP" {
+             return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid dictionary format"));
